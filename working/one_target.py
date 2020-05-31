@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,9 +28,24 @@ import nilearn.plotting as nlplt
 import nibabel as nib
 
 # target_id {0:"age", 1:"domain1_var1", 2:"domain1_var2", 3:"domain2_var1", 4:"domain2_var2"}
-target_id = 0
-file_No = 0
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-fno", "--file_No", type=int, default=0,
+    help="number of file (default=0)")
+parser.add_argument(
+    "-tid", "--target_id", type=int, default=0,
+    help="target_id (default=0)")
+parser.add_argument(
+    "-fold", "--fold", type=int, default=0,
+    help="fold (default=0)")
+parser.add_argument(
+    "-verbose", "--verbose", type=bool, default=True,
+    help="verbose (default=True)")
+
+args = parser.parse_args()
+target_id = args.target_id
+file_No = args.file_No
 # %%
 class config:
     epochs = 100
@@ -38,14 +57,14 @@ class config:
     root_test_path = '../input/trends-assessment-prediction/fMRI_test'
     num_folds = 5
     seed = 2020
-    verbose = True
+    verbose = args.verbose
     verbose_step = 1
     num_workers = 4
     test_num_workers = 4
     target = ["age", "domain1_var1", "domain1_var2", "domain2_var1", "domain2_var2"]
     weight = [0.3, 0.175, 0.175, 0.175, 0.175]
     # cross validationをするときはここでfoldを変更する
-    fold = 1
+    fold = args.fold
 
 
 # %%
@@ -91,9 +110,6 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-# %% [markdown]
-# # Loss function
-
 # %%
 class TReNDSLoss(nn.Module):
     def __init__(self, device):
@@ -108,8 +124,6 @@ class TReNDSLoss(nn.Module):
     def forward(self, output: torch.Tensor, target: torch.Tensor, **kwargs):
         return self.__loss(output, target)
 
-# %% [markdown]
-# # Model
 
 # %%
 __all__ = [
@@ -384,16 +398,12 @@ def count_trainable_parameters(model):
 
 
 model = TReNDSModel()
-model
 
 
 # num_parameters=count_parameters(model)
 # print(num_parameters)
 # num_parameters=count_trainable_parameters(model)
 # print(num_parameters)
-
-# %% [markdown]
-# # Dataset
 
 # %%
 class MRIMapDataset(Dataset):
@@ -692,8 +702,8 @@ loading = loading[loading["is_train"] == True].copy()
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-save_model_path = "resnet10.pth"
-log_path = "log_resnet10.csv"
+save_model_path = "models/resnet10.pth"
+log_path = "logs/log_resnet10.csv"
 print(device)
 print(save_model_path)
 print(log_path)
@@ -741,8 +751,7 @@ fitter = run(config.fold)
 log_df = pd.read_csv(fitter.log_path)
 # log_df = pd.read_csv("log0.csv")
 # log_df = pd.read_csv('../input/trend3dcnn/log0.csv')
-
-log_df
+#log_df
 
 
 # %%
@@ -755,7 +764,7 @@ plt.subplot(1,2,2)
 plt.title("score")
 log_df.score.plot()
 log_df.val_score.plot()
-plt.savefig('loss.png')
+plt.savefig(f'{config.target[target_id]}_fold{config.fold}_No{file_No}.png')
 
 
 # %%
