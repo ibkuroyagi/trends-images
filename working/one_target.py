@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# in No.1 delet fnc and normalize each target data
+# so, I changed fMRIdataset
 import argparse
 import torch
 import torch.nn as nn
@@ -367,7 +368,8 @@ class TReNDSModel(nn.Module):
         
         self.m1 = nn.MaxPool3d(kernel_size=(3, 3, 3))
         self.f0 = nn.Flatten()
-        self.l0 = nn.Linear(5500, 1024)
+        # self.l0 = nn.Linear(5500, 1024)
+        self.l0 = nn.Linear(4122, 1024) #loading, fMRI
         # self.l0 = nn.Linear(17788, 1024) # resnet10 -> 4096, resnet50 -> 16384
         self.p0 = nn.PReLU()
         self.l1 = nn.Linear(1024, 256)
@@ -375,11 +377,11 @@ class TReNDSModel(nn.Module):
         self.l2 = nn.Linear(256, 1)
         
         
-    def forward(self, inputs, fnc, loading):
+    def forward(self, inputs, loading):
         features = self.resnet(inputs)
         x = self.m1(features)
         flatten = self.f0(x) #shape=(batch, 16384) +(batch, 1378)) + (bathc, 26)
-        x = torch.cat([flatten, fnc, loading], dim=1) #shape(batch, 16384+1378+26)
+        x = torch.cat([flatten, loading], dim=1) #shape(batch, 16384+26)
         x = self.l0(x)
         x = self.p0(x)
         x = self.l1(x)
@@ -410,11 +412,13 @@ model = TReNDSModel()
 
 # %%
 class MRIMapDataset(Dataset):
-    def __init__(self, df=None, fnc=None, loading=None, mode="train"):
+    def __init__(self, df=None, fnc=None, loading=None, mean=50.0, std=1.0, mode="train"):
         super(Dataset, self).__init__()
         self.mode = mode
         self.fnc = fnc.iloc[:, 1:-2].values
         self.loading = loading.iloc[:, 1:-2].values
+        self.mean = torch.tensor(mean, dtype=torch.float)
+        self.std = torch.tensor(std, dtype=torch.float)
         
         if mode == "train":
             # self.labels = df[['age', 'domain1_var1', 'domain1_var2', 'domain2_var1', 'domain2_var2']].values
@@ -435,11 +439,12 @@ class MRIMapDataset(Dataset):
             subject_data = np.moveaxis(subject_data, [0, 1, 2, 3], [3, 2, 1, 0])
             fnc = self.fnc[idx]
             loading = self.loading[idx]
+            targets = (torch.tensor(self.labels[idx, ], dtype=torch.float) - self.mean) / self.std
             return {
                 'scan_maps': torch.tensor(subject_data, dtype=torch.float),
                 'fnc': torch.tensor(fnc, dtype=torch.float),
                 'loading': torch.tensor(loading, dtype=torch.float),
-                'targets': torch.tensor(self.labels[idx, ], dtype=torch.float)
+                'targets': targets
             }
         elif self.mode == "test":
             scan_id = self.list_IDs[idx]        
@@ -498,7 +503,7 @@ class EarlyStopping:
 
 # %%
 class GPUFitter:
-    def __init__(self, model, fold, device, config, save_model_path="checkpoint.pth", log_path="log.csv"):
+    def __init__(self, model, fold, device, config, mean=50.0, std=1.0, save_model_path="checkpoint.pth", log_path="log.csv"):
         self.model = model
         self.device = device
         self.log_path = log_path[:-4] +f"{config.target[target_id]}_fold{fold}_No{file_No}.csv"
@@ -534,7 +539,7 @@ class GPUFitter:
             loss, score = self.train_one_epoch(train_loader)
             
             val_loss, val_score = self.validation_one_epoch(valid_loader)
-            print(f'Epoch: {self.epoch}, loss: {loss.avg:.5f}, score: {score.avg:.5f},'                  f'val_loss: {val_loss.avg:.5f}, val_score: {val_score.avg:.5f},'                  f'time:{(time.time() - t):.5f}, lr{lr:.7f}' )
+            print(f'Epoch: {self.epoch}, loss: {loss.avg:.5f}, score: {score.avg:.5f},val_loss: {val_loss.avg:.5f}, val_score: {val_score.avg:.5f},time:{(time.time() - t):.5f}, lr{lr:.7f}' )
             res = self.early_stopping(val_score.avg, self.model, mode="min")
             self.scheduler.step(val_loss.avg)
             tmp = pd.DataFrame([[loss.avg, score.avg, val_loss.avg, val_score.avg, lr]], columns=self.columns)
@@ -555,25 +560,27 @@ class GPUFitter:
         
         for step, data in enumerate(train_loader):
             scan_maps = data['scan_maps']
-            fnc = data['fnc']
+            # fnc = data['fnc']
             loading =data['loading']
             targets = data['targets']
             
             scan_maps = scan_maps.to(self.device, dtype=torch.float)
-            fnc = fnc.to(self.device, dtype=torch.float)
+            # fnc = fnc.to(self.device, dtype=torch.float)
             loading = loading.to(self.device, dtype=torch.float)
             targets = targets.to(self.device, dtype=torch.float)
             self.optimizer.zero_grad()
             
+            # outputs = self.model(scan_maps, fnc, loading)
             outputs = self.model(scan_maps, fnc, loading)
-            
             loss = self.criterion(outputs, targets)
             
             batch_size = scan_maps.size(0)
             losses.update(loss.detach().item(), batch_size)
             
-            targets = targets.detach().cpu().numpy()
-            outputs = outputs.detach().cpu().numpy()
+            # targets = targets.detach().cpu().numpy()
+            # outputs = outputs.detach().cpu().numpy()
+            targets = (targets.detach().cpu().numpy() * self.sdt) + self.mean
+            outputs = (outputs.detach().cpu().numpy() * self.sdt) + self.mean
             
             metric = weighted_metric(targets, outputs)
             scores.update(metric, batch_size)
@@ -617,8 +624,10 @@ class GPUFitter:
                 batch_size = scan_maps.size(0)
                 losses.update(loss.detach().item(), batch_size)
                 
-                targets = targets.detach().cpu().numpy()
-                outputs = outputs.detach().cpu().numpy()
+                # targets = targets.detach().cpu().numpy()
+                # outputs = outputs.detach().cpu().numpy()
+                targets = (targets.detach().cpu().numpy() * self.sdt) + self.mean
+                outputs = (outputs.detach().cpu().numpy() * self.sdt) + self.mean
                 metric = weighted_metric(targets, outputs)
                 scores.update(metric, batch_size)
                 if config.verbose:
@@ -658,6 +667,8 @@ class GPUFitter:
 # df = pd.read_csv('../input/trends-assessment-prediction/train_scores.csv', nrows=50)
 
 df = pd.read_csv('../input/trends-assessment-prediction/train_scores.csv')
+df_mean = df.mean()
+df_std = df.std()
 
 df['kfold'] = -1
 df = df.fillna(df.mean())
@@ -725,8 +736,10 @@ def run(fold):
     train_loading = loading[loading['kfold'] != fold].reset_index(drop=True)
     valid_loading = loading[loading['kfold'] != fold].reset_index(drop=True)
     
-    train_dataset = MRIMapDataset(df=train_df, fnc=train_fnc, loading=train_loading, mode="train")
-    valid_dataset = MRIMapDataset(df=valid_df, fnc=valid_fnc, loading=valid_loading, mode="train")
+    train_dataset = MRIMapDataset(df=train_df, fnc=train_fnc, loading=train_loading,
+                                  mean=float(df_mean[target_id + 1]), std=float(df_std[target_id + 1]), mode="train")
+    valid_dataset = MRIMapDataset(df=valid_df, fnc=valid_fnc, loading=valid_loading, 
+                                  mean=float(df_mean[target_id + 1]), std=float(df_std[target_id + 1]), mode="train")
     
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -740,7 +753,7 @@ def run(fold):
         num_workers=config.num_workers
     )
     
-    fitter = GPUFitter(model, fold, device, config, save_model_path=save_model_path, log_path=log_path)
+    fitter = GPUFitter(model, fold, device, config, mean=df_mean[target_id + 1], std=df_sdt[target_id + 1], save_model_path=save_model_path, log_path=log_path)
     fitter.fit(train_data_loader, valid_data_loader)
     print('over')
     return fitter
@@ -806,12 +819,15 @@ with torch.no_grad():
         fnc = data['fnc']
         loading =data['loading']       
         scan_maps = scan_maps.to(device, dtype=torch.float)
-        fnc = fnc.to(device, dtype=torch.float)
+        # fnc = fnc.to(device, dtype=torch.float)
         loading = loading.to(device, dtype=torch.float)
         
-        outputs = model(scan_maps, fnc, loading)
+        # outputs = model(scan_maps, fnc, loading)
+        outputs = model(scan_maps, loading)
         batch_size = scan_maps.size(0)
-        outputs = outputs.detach().cpu().numpy()
+        # outputs = outputs.detach().cpu().numpy()
+        # test_preds = np.concatenate([test_preds, outputs], 0)
+        outputs = (outputs.detach().cpu().numpy() * df_std[target_id + 1]) + df_mean[target_id + 1]
         test_preds = np.concatenate([test_preds, outputs], 0)
         torch.cuda.empty_cache()
         gc.collect()

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# in No.1 delet fnc and normalize each target data
+# so, I changed fMRIdataset
 #%%
 import argparse
 import torch
@@ -447,8 +450,11 @@ class MRIMapDataset(Dataset):
                 'loading': torch.tensor(loading, dtype=torch.float),
             }
 
+
 # df = pd.read_csv('../input/trends-assessment-prediction/train_scores.csv', nrows=50)
 df = pd.read_csv('../input/trends-assessment-prediction/train_scores.csv')
+df_mean = df.mean()
+df_std = df.std()
 
 df['kfold'] = -1
 df = df.fillna(df.mean())
