@@ -40,12 +40,15 @@ parser.add_argument(
     "-fold", "--fold", type=int, default=0,
     help="fold (default=0)")
 parser.add_argument(
-    "-verbose", "--verbose", type=bool, default=True,
-    help="verbose (default=True)")
+    "-nw", "--num_workers", type=int, default=4,
+    help="num_workers (default=4)")
+parser.add_argument('--verbose', action='store_true')
 
 args = parser.parse_args()
 target_id = args.target_id
 file_No = args.file_No
+print(f"target_id:{target_id}, file_No:{file_No}, fold:{args.fold}")
+print(f"verbose:{args.verbose} type:", type(args.verbose))
 # %%
 class config:
     epochs = 100
@@ -59,7 +62,7 @@ class config:
     seed = 2020
     verbose = args.verbose
     verbose_step = 1
-    num_workers = 4
+    num_workers = args.num_workers
     test_num_workers = 4
     target = ["age", "domain1_var1", "domain1_var2", "domain2_var1", "domain2_var2"]
     weight = [0.3, 0.175, 0.175, 0.175, 0.175]
@@ -289,7 +292,7 @@ class ResNet3D(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.conv1( x)
+        x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
@@ -443,8 +446,8 @@ class MRIMapDataset(Dataset):
             subject_filename = config.root_test_path + '/' + scan_id
             subject_data = h5py.File(subject_filename, 'r')['SM_feature'][()]
             subject_data = np.moveaxis(subject_data, [0, 1, 2, 3], [3, 2, 1, 0])
-            fnc = self.fnc[idx].values
-            loading = self.loading[idx].values
+            fnc = self.fnc[idx]
+            loading = self.loading[idx]
             return {
                 'scan_maps': torch.tensor(subject_data, dtype=torch.float),
                 'fnc': torch.tensor(fnc, dtype=torch.float),
@@ -498,8 +501,8 @@ class GPUFitter:
     def __init__(self, model, fold, device, config, save_model_path="checkpoint.pth", log_path="log.csv"):
         self.model = model
         self.device = device
-        self.log_path = log_path[:-4] +f"_fold{fold}_No{file_No}.csv"
-        self.save_model_path = save_model_path[:-4] +f"_fold{fold}_No{file_No}.pth"
+        self.log_path = log_path[:-4] +f"{config.target[target_id]}_fold{fold}_No{file_No}.csv"
+        self.save_model_path = save_model_path[:-4] +f"{config.target[target_id]}_fold{fold}_No{file_No}.pth"
         
         self.epoch = 0
         self.fold = fold
@@ -576,7 +579,7 @@ class GPUFitter:
             scores.update(metric, batch_size)
             loss.backward()
             self.optimizer.step()
-            if self.config.verbose:
+            if config.verbose:
                 if step % self.config.verbose_step == 0:
                     self.log(
                         f'Train Step {step}, ' + \
@@ -618,7 +621,7 @@ class GPUFitter:
                 outputs = outputs.detach().cpu().numpy()
                 metric = weighted_metric(targets, outputs)
                 scores.update(metric, batch_size)
-                if self.config.verbose:
+                if config.verbose:
                     if step % self.config.verbose_step == 0:
                         self.log(
                         f'Validation Step {step}, ' + \
@@ -756,15 +759,19 @@ log_df = pd.read_csv(fitter.log_path)
 
 # %%
 plt.figure(figsize=(15,5))
-plt.title("loss")
 plt.subplot(1,2,1)
+plt.title("loss")
 log_df.loss.plot()
 log_df.val_loss.plot()
+plt.legend()
+plt.tight_layout()
 plt.subplot(1,2,2)
 plt.title("score")
 log_df.score.plot()
 log_df.val_score.plot()
-plt.savefig(f'{config.target[target_id]}_fold{config.fold}_No{file_No}.png')
+plt.legend()
+plt.tight_layout()
+plt.savefig(f'pictures/{config.target[target_id]}_fold{fold}_No{file_No}.png')
 
 
 # %%
@@ -819,7 +826,7 @@ print(test_preds)
 # test_df = pd.DataFrame(test_preds, columns=["age", "domain1_var1", "domain1_var2","domain2_var1", "domain2_var2"])
 test_df = pd.DataFrame(test_preds, columns=[config.target[target_id]])
 test_df.describe()
-test_df.to_csv(f"test_fold{config.fold}_No{file_No}.csv", index=False)
+test_df.to_csv(f"output/test_fold{config.fold}_No{file_No}.csv", index=False)
 
 
 # %%
