@@ -55,7 +55,7 @@ class config:
     epochs = 100
     batch_size = 16
     test_batch_size = 16
-    learning_rate = 1e-3
+    learning_rate = 5e-4
     fMRI_mask_path = '../input/trends-assessment-prediction/fMRI_mask.nii'
     root_train_path = '../input/trends-assessment-prediction/fMRI_train'
     root_test_path = '../input/trends-assessment-prediction/fMRI_test'
@@ -508,6 +508,8 @@ class GPUFitter:
         self.device = device
         self.log_path = log_path[:-4] +f"{config.target[target_id]}_fold{fold}_No{file_No}.csv"
         self.save_model_path = save_model_path[:-4] +f"{config.target[target_id]}_fold{fold}_No{file_No}.pth"
+        self.mean = mean
+        self.std = std
         
         self.epoch = 0
         self.fold = fold
@@ -518,7 +520,7 @@ class GPUFitter:
             self.optimizer, 
             mode='min', 
             patience=3, 
-            factor=0.3, 
+            factor=0.5, 
             verbose=True
         )
         self.early_stopping = EarlyStopping(patience=10, device=device, checkpoint_path=self.save_model_path)
@@ -529,6 +531,7 @@ class GPUFitter:
         self.log_df = pd.DataFrame(columns=self.columns)
         
     def fit(self, train_loader, valid_loader):
+        res = 0
         for e in range(self.config.epochs):
             lr = self.optimizer.param_groups[0]['lr']
             if self.config.verbose:
@@ -540,8 +543,9 @@ class GPUFitter:
             
             val_loss, val_score = self.validation_one_epoch(valid_loader)
             print(f'Epoch: {self.epoch}, loss: {loss.avg:.5f}, score: {score.avg:.5f},val_loss: {val_loss.avg:.5f}, val_score: {val_score.avg:.5f},time:{(time.time() - t):.5f}, lr{lr:.7f}' )
-            res = self.early_stopping(val_score.avg, self.model, mode="min")
-            self.scheduler.step(val_loss.avg)
+            if self.epoch >= 5:
+                res = self.early_stopping(val_score.avg, self.model, mode="min")
+                self.scheduler.step(val_score.avg)
             tmp = pd.DataFrame([[loss.avg, score.avg, val_loss.avg, val_score.avg, lr]], columns=self.columns)
             self.log_df = pd.concat([self.log_df, tmp], axis=0)
             self.log_df.to_csv(self.log_path, index=False)
@@ -561,7 +565,7 @@ class GPUFitter:
         for step, data in enumerate(train_loader):
             scan_maps = data['scan_maps']
             # fnc = data['fnc']
-            loading =data['loading']
+            loading = data['loading']
             targets = data['targets']
             
             scan_maps = scan_maps.to(self.device, dtype=torch.float)
@@ -571,7 +575,7 @@ class GPUFitter:
             self.optimizer.zero_grad()
             
             # outputs = self.model(scan_maps, fnc, loading)
-            outputs = self.model(scan_maps, fnc, loading)
+            outputs = self.model(scan_maps, loading)
             loss = self.criterion(outputs, targets)
             
             batch_size = scan_maps.size(0)
@@ -579,8 +583,8 @@ class GPUFitter:
             
             # targets = targets.detach().cpu().numpy()
             # outputs = outputs.detach().cpu().numpy()
-            targets = (targets.detach().cpu().numpy() * self.sdt) + self.mean
-            outputs = (outputs.detach().cpu().numpy() * self.sdt) + self.mean
+            targets = (targets.detach().cpu().numpy() * self.std) + self.mean
+            outputs = (outputs.detach().cpu().numpy() * self.std) + self.mean
             
             metric = weighted_metric(targets, outputs)
             scores.update(metric, batch_size)
@@ -611,14 +615,14 @@ class GPUFitter:
             for step, data in enumerate(validation_loader):
                 scan_maps = data['scan_maps']
                 fnc = data['fnc']
-                loading =data['loading']
+                loading = data['loading']
                 targets = data['targets']
 
                 scan_maps = scan_maps.to(self.device, dtype=torch.float)
                 fnc = fnc.to(self.device, dtype=torch.float)
                 loading = loading.to(self.device, dtype=torch.float)
                 targets = targets.to(self.device, dtype=torch.float)
-                outputs = self.model(scan_maps, fnc, loading)
+                outputs = self.model(scan_maps, loading)
 
                 loss = self.criterion(outputs, targets)
                 batch_size = scan_maps.size(0)
@@ -626,8 +630,8 @@ class GPUFitter:
                 
                 # targets = targets.detach().cpu().numpy()
                 # outputs = outputs.detach().cpu().numpy()
-                targets = (targets.detach().cpu().numpy() * self.sdt) + self.mean
-                outputs = (outputs.detach().cpu().numpy() * self.sdt) + self.mean
+                targets = (targets.detach().cpu().numpy() * self.std) + self.mean
+                outputs = (outputs.detach().cpu().numpy() * self.std) + self.mean
                 metric = weighted_metric(targets, outputs)
                 scores.update(metric, batch_size)
                 if config.verbose:
@@ -753,7 +757,7 @@ def run(fold):
         num_workers=config.num_workers
     )
     
-    fitter = GPUFitter(model, fold, device, config, mean=df_mean[target_id + 1], std=df_sdt[target_id + 1], save_model_path=save_model_path, log_path=log_path)
+    fitter = GPUFitter(model, fold, device, config, mean=df_mean[target_id + 1], std=df_std[target_id + 1], save_model_path=save_model_path, log_path=log_path)
     fitter.fit(train_data_loader, valid_data_loader)
     print('over')
     return fitter
@@ -774,14 +778,14 @@ log_df = pd.read_csv(fitter.log_path)
 plt.figure(figsize=(15,5))
 plt.subplot(1,2,1)
 plt.title("loss")
-log_df.loss.plot()
-log_df.val_loss.plot()
+log_df.loss[3:].plot()
+log_df.val_loss[3:].plot()
 plt.legend()
 plt.tight_layout()
 plt.subplot(1,2,2)
 plt.title("score")
-log_df.score.plot()
-log_df.val_score.plot()
+log_df.score[3:].plot()
+log_df.val_score[3:].plot()
 plt.legend()
 plt.tight_layout()
 plt.savefig(f'pictures/{config.target[target_id]}_fold{fold}_No{file_No}.png')
@@ -812,7 +816,7 @@ model.load_state_dict(torch.load(fitter.save_model_path))#'../input/trend3dcnn/c
 model.to(device)
 model.eval()
 
-test_preds = np.empty((0,5))
+test_preds = np.empty((0,1))
 with torch.no_grad():
     for step, data in enumerate(tqdm(test_dataloader)):
         scan_maps = data['scan_maps']
@@ -842,7 +846,7 @@ print(test_preds)
 # test_df = pd.DataFrame(test_preds, columns=["age", "domain1_var1", "domain1_var2","domain2_var1", "domain2_var2"])
 test_df = pd.DataFrame(test_preds, columns=[config.target[target_id]])
 test_df.describe()
-test_df.to_csv(f"output/test_fold{config.fold}_No{file_No}.csv", index=False)
+test_df.to_csv(f"output/test_{config.target[target_id]}fold{config.fold}_No{file_No}.csv", index=False)
 
 
 # %%
