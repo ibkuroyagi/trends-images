@@ -109,7 +109,8 @@ y_scores = np.zeros((max_iter, NUM_FOLDS))
 scores = np.zeros(max_iter)
 t_start = time()
 for i in tqdm(range(max_iter)):
-    _features = features[:max_features - i]
+    # _features = features[:max_features - i]
+    _features = features[i:]
     _y_oof = np.zeros((df.shape[0], n_alpha))
     _y_preds = np.zeros((NUM_FOLDS, n_alpha, df.shape[0]))
     _y_scores = np.zeros((n_alpha, NUM_FOLDS))
@@ -136,7 +137,7 @@ for i in tqdm(range(max_iter)):
 plt.figure(figsize=(10, 10))
 plt.subplot(2, 1, 1)
 for f in range(NUM_FOLDS):
-    plt.plot(np.arange(max_iter - 1, -1, -1), y_scores[:, f], label=f"fold{f}")
+    plt.plot(np.arange(max_iter), y_scores[:, f], label=f"fold{f}")
 plt.legend()
 plt.xlabel('n_feature')
 plt.ylabel(f'score:{target}')
@@ -145,7 +146,7 @@ plt.title(f'No:{feature_names}, {target} each fold')
 plt.tight_layout()
 
 plt.subplot(2, 1, 2)
-plt.plot(np.arange(max_iter - 1, -1, -1), scores)
+plt.plot(np.arange(max_iter), scores)
 plt.xlabel('n_feature')
 plt.ylabel(f'score:{target}')
 plt.grid(alpha=0.5)
