@@ -34,9 +34,9 @@
 </pre>
 
 ### ensemble
-the results of ensemble data valid and test  
-log_resnet10{target}_* .pth is results of 3DCNN to predict target  
-log_adversal{target}_* .pth is results of 3DCNN to predict adversal-validation
+### #the results of ensemble data valid and test  
+One of the most importnt file.   
+you have to use these ridge predited results ```/ensemble/pred_ridge_No{file_No}.csv```  
 
 ### logs
 log of neural network 3DCNN and Adversal validation  
