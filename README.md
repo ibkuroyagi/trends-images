@@ -37,6 +37,12 @@
 ### #the results of ensemble data valid and test  
 One of the most importnt file.   
 you have to use these ridge predited results ```/ensemble/pred_ridge_No{file_No}.csv```  
+* save columns
+```
+json_path = f"ensemble/ridge_No{file_No}_columns.json"
+with open(json_path) as f:
+    df = json.load(f)
+```
 
 ### logs
 log of neural network 3DCNN and Adversal validation  
