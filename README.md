@@ -1,6 +1,7 @@
 # TReNDS Neuroimaging
 
 ## explain these files
+<pre>
 ~/working% tree -L 1
 .
 ├── adversal-valid.ipynb
@@ -30,6 +31,7 @@
 ├── submission
 ├── test_check.ipynb
 └── trends-lofo-feature-importance.ipynb
+</pre>
 
 ### ensemble
 the results of ensemble data valid and test  
