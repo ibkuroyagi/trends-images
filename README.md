@@ -34,10 +34,10 @@
 </pre>
 
 ### ensemble
-### #the results of ensemble data valid and test  
+#### the results of ensemble data valid and test  
 One of the most importnt file.   
-you have to use these ridge predited results ```/ensemble/pred_ridge_No{file_No}.csv```  
-* save columns
+you have to use these ridge predicted results ```/ensemble/pred_ridge_No{file_No}.csv```  
+* how to load columns?
 ```
 import json
 json_path = f"ensemble/ridge_No{file_No}_columns.json"
@@ -47,7 +47,7 @@ with open(json_path) as f:
 
 ### logs
 log of neural network 3DCNN and Adversal validation  
-log_resnet10{target}_* .csv is resukts of 3DCNN to predict target  
+log_resnet10{target}_* .csv is results of 3DCNN to predict target  
 adversal_* .csv is results of 3DCNN to predict adversal-validation
 
 
