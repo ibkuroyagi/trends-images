@@ -10,7 +10,6 @@ import pandas as pd
 
 import random
 from tqdm.notebook import tqdm
-import math
 from functools import partial
 import h5py
 from datetime import datetime
@@ -116,7 +115,7 @@ def focal_loss(labels, logits, alpha, gamma):
     return focal_loss
 
 
-def CB_loss(labels, logits, samples_per_cls, no_of_classes, loss_type, beta, gamma):
+def CB_loss(labels, logits, samples_per_cls, no_of_classes, loss_type, beta, gamma, device="cuda"):
     """Compute the Class Balanced Loss between `logits` and the ground truth `labels`.
     Class Balanced Loss: ((1-beta)/(1-beta^n))*Loss(labels, logits)
     where Loss is one of the standard losses used for Neural Networks.
@@ -137,12 +136,12 @@ def CB_loss(labels, logits, samples_per_cls, no_of_classes, loss_type, beta, gam
 
     labels_one_hot = F.one_hot(labels, no_of_classes).float()
 
-    weights = torch.tensor(weights).float()
+    weights = torch.tensor(weights).float().to(device)
     weights = weights.unsqueeze(0)
     weights = weights.repeat(labels_one_hot.shape[0],1) * labels_one_hot
     weights = weights.sum(1)
     weights = weights.unsqueeze(1)
-    weights = weights.repeat(1,no_of_classes)
+    weights = weights.repeat(1, no_of_classes)
 
     if loss_type == "focal":
         cb_loss = focal_loss(labels_one_hot, logits, weights, gamma)
@@ -152,17 +151,19 @@ def CB_loss(labels, logits, samples_per_cls, no_of_classes, loss_type, beta, gam
         pred = logits.softmax(dim=1)
         cb_loss = F.binary_cross_entropy(input=pred, target=labels_one_hot, weight=weights)
     return cb_loss
-no_of_classes = 2
-logits = F.softmax(torch.rand(10,no_of_classes)).float()#.view(-1)
-labels = torch.empty(10).random_(2).to(torch.int64)
-print(logits)
-print(labels)
-beta = 0.9999
-gamma = 1.0
-samples_per_cls = [400, 4000]
-loss_type = "focal"
-cb_loss = CB_loss(labels, logits, samples_per_cls, no_of_classes,loss_type, beta, gamma)
-print(cb_loss)
+
+
+# no_of_classes = 2
+# logits = F.softmax(torch.rand(10,no_of_classes)).float()#.view(-1)
+# labels = torch.empty(10).random_(2).to(torch.int64)
+# print(logits)
+# print(labels)
+# beta = 0.9999
+# gamma = 1.0
+# samples_per_cls = [400, 4000]
+# loss_type = "focal"
+# cb_loss = CB_loss(labels, logits, samples_per_cls, no_of_classes,loss_type, beta, gamma)
+# print(cb_loss)
 
 
 __all__ = [
@@ -392,7 +393,6 @@ def resnet200(**kwargs):
     return model
 
 
-# %%
 class TReNDSModel(nn.Module):
     def __init__(self):
         super(TReNDSModel, self).__init__()
@@ -431,22 +431,16 @@ class MRIMapDataset(Dataset):
         self.mode = mode
         self.fnc = fnc.iloc[:, 1:-2].values
         self.loading = loading.iloc[:, 1:-2].values
-        
+        self.fMRI_path = df["path"].values
         if mode == "train":
-            # self.labels = df[['age', 'domain1_var1', 'domain1_var2', 'domain2_var1', 'domain2_var2']].values
             self.labels = df["is_site2"].values
-            self.list_IDs = df["Id"].values.astype(str)
-        elif mode == "test":
-            list1 = os.listdir(config.root_test_path)
-            self.list_IDs = sorted(list1)
 
     def __len__(self):
-        return len(self.list_IDs)
+        return len(self.fMRI_path)
     
     def __getitem__(self, idx):
         if self.mode == "train":
-            scan_id = self.list_IDs[idx]        
-            subject_filename = config.root_train_path + '/' + scan_id + '.mat'
+            subject_filename = self.fMRI_path[idx]
             subject_data = h5py.File(subject_filename, 'r')['SM_feature'][()]
             subject_data = np.moveaxis(subject_data, [0, 1, 2, 3], [3, 2, 1, 0])
             fnc = self.fnc[idx] / 600.0
@@ -458,8 +452,7 @@ class MRIMapDataset(Dataset):
                 'targets': torch.tensor(self.labels[idx, ], dtype=torch.int)
             }
         elif self.mode == "test":
-            scan_id = self.list_IDs[idx]        
-            subject_filename = config.root_test_path + '/' + scan_id
+            subject_filename = self.fMRI_path[idx]
             subject_data = h5py.File(subject_filename, 'r')['SM_feature'][()]
             subject_data = np.moveaxis(subject_data, [0, 1, 2, 3], [3, 2, 1, 0])
             fnc = self.fnc[idx].values / 600.0
@@ -534,8 +527,8 @@ class GPUFitter:
         self.samples_per_cls = [1176 * 4, 102 * 4]
         self.samples_per_cls_valid = [1176 * 4, 102 * 1]
         self.loss_type = "focal"
-        self.criterion = CB_loss  # TReNDSLoss(self.device)                
-        self.log(f'Fitter prepared for fold {self.fold}. Device is {self.device} target:{config.target[target_id]}')
+        self.criterion = CB_loss  # TReNDSLoss(self.device)
+        self.log(f'Fitter prepared for fold {self.fold}. Device is {self.device}')
         self.columns = ["loss", "score", "val_loss", "val_score", "lr"]
         self.log_df = pd.DataFrame(columns=self.columns)
         
@@ -545,11 +538,11 @@ class GPUFitter:
             if self.config.verbose:
                 timestamp = datetime.utcnow().isoformat()
                 self.log(f'\n{timestamp}\nLR:{lr:.5f}')
-            
+
             t = time.time()
             loss, score = self.train_one_epoch(train_loader)
             val_loss, val_score = self.validation_one_epoch(valid_loader)
-            print(f'Epoch: {self.epoch}, loss: {loss.avg:.5f}, score: {score:.5f},'                  f'val_loss: {val_loss.avg:.5f}, val_score: {val_score:.5f},'                  f'time:{(time.time() - t):.5f}, lr{lr:.7f}' )
+            print(f'Epoch: {self.epoch}, loss: {loss.avg:.5f}, score: {score:.5f}', f'val_loss: {val_loss.avg:.5f}, val_score: {val_score:.5f}', f'time:{(time.time() - t):.5f}, lr{lr:.7f}')
             res = self.early_stopping(val_score, self.model, mode="max")
             self.scheduler.step(val_loss.avg)
             tmp = pd.DataFrame([[loss.avg, score, val_loss.avg, val_score, lr]], columns=self.columns)
@@ -561,7 +554,7 @@ class GPUFitter:
                 print(self.save_model_path)
                 break
             self.epoch += 1
-    
+
     def train_one_epoch(self, train_loader):
         self.model.train()
         losses = AverageMeter()
@@ -573,11 +566,11 @@ class GPUFitter:
             fnc = data['fnc']
             loading = data['loading']
             targets = data['targets']
-            
+
             scan_maps = scan_maps.to(self.device, dtype=torch.float)
             fnc = fnc.to(self.device, dtype=torch.float)
             loading = loading.to(self.device, dtype=torch.float)
-            targets = targets.to(self.device, dtype=torch.int)
+            targets = targets.to(self.device, dtype=torch.int64)
             self.optimizer.zero_grad()
             
             outputs = self.model(scan_maps, fnc, loading)
@@ -620,7 +613,7 @@ class GPUFitter:
                 scan_maps = scan_maps.to(self.device, dtype=torch.float)
                 fnc = fnc.to(self.device, dtype=torch.float)
                 loading = loading.to(self.device, dtype=torch.float)
-                targets = targets.to(self.device, dtype=torch.float)
+                targets = targets.to(self.device, dtype=torch.int64)
                 outputs = self.model(scan_maps, fnc, loading)
 
                 loss = self.criterion(targets, outputs, self.samples_per_cls_valid, self.no_of_classes, self.loss_type, self.beta, self.gamma)
@@ -645,6 +638,7 @@ class GPUFitter:
     def log(self, message):
         if self.config.verbose:
             print(message)
+
 
 train_df = pd.read_csv("../input/trends-assessment-prediction/train_scores.csv")
 drop_cols = ["age", "domain1_var1", "domain1_var2", "domain2_var1", "domain2_var2"]
@@ -685,6 +679,11 @@ for fold, (trn_, val_) in enumerate(kf.split(adversal_loading_df[adversal_loadin
     adversal_loading_df.loc[val_, 'kfold'] = fold
     adversal_fnc_df.loc[val_, 'kfold'] = fold
 adversal_target_df = adversal_loading_df[["Id", "is_site2", "kfold"]]
+adversal_target_df.loc[:, 'path'] = -1
+id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==0, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df['is_site2']==0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==1, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df['is_site2']==1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 save_model_path = "adversal_resnet10.pth"
 log_path = "log_adversal_resnet10.csv"
@@ -757,10 +756,10 @@ _test_loading = test_loading.loc[test_loading["is_site2"] != 1]
 _test_fnc = test_fnc.loc[test_fnc["is_site2"] != 1]
 test_dataset = MRIMapDataset(fnc=_test_fnc, loading=_test_loading, mode="test")
 test_dataloader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=config.batch_size,
-        num_workers=config.num_workers,
-        shuffle=False)
+                                              test_dataset,
+                                              batch_size=config.batch_size,
+                                              num_workers=config.num_workers,
+                                              shuffle=False)
 model = TReNDSModel()
 model.load_state_dict(torch.load(fitter.save_model_path))#'../input/trend3dcnn/checkpoint0.pth'
 model.to(device)
