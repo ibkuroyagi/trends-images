@@ -39,6 +39,7 @@ One of the most importnt file.
 you have to use these ridge predited results ```/ensemble/pred_ridge_No{file_No}.csv```  
 * save columns
 ```
+import json
 json_path = f"ensemble/ridge_No{file_No}_columns.json"
 with open(json_path) as f:
     df = json.load(f)
