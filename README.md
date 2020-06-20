@@ -49,7 +49,7 @@ with open(json_path) as f:
 log of neural network 3DCNN and Adversal validation  
 log_resnet10{target}_* .csv is results of 3DCNN to predict target  
 adversal_* .csv is results of 3DCNN to predict adversal-validation
-
+adversal results are saved as ~No30.pth
 
 ### models 
 model of neural network 3DCNN and Adversal validation  
@@ -67,7 +67,7 @@ results of ridge regression
 No0. use all feature(fnc, loading)  
 No1. fix std Forcibly  
 No2. decrease feature backward process  (0:1404, 0:1403,..., 0:1)  
-N03. decrease feature backward process  (0:1, 0:2,..., 0:1404)  
+N03. decrease feature forkward process  (0:1, 0:2,..., 0:1404)  
 
 ### submission 
 submmison files
