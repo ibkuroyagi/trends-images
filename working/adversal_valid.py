@@ -449,7 +449,7 @@ class MRIMapDataset(Dataset):
                 'scan_maps': torch.tensor(subject_data, dtype=torch.float),
                 'fnc': torch.tensor(fnc, dtype=torch.float),
                 'loading': torch.tensor(loading, dtype=torch.float),
-                'targets': torch.tensor(self.labels[idx, ], dtype=torch.int)
+                'targets': torch.tensor(self.labels[idx, ], dtype=torch.int64)
             }
         elif self.mode == "test":
             subject_filename = self.fMRI_path[idx]
@@ -579,8 +579,8 @@ class GPUFitter:
             batch_size = scan_maps.size(0)
             losses.update(loss.detach().item(), batch_size)
             
-            targets = targets.detach().cpu().numpy()
-            outputs = outputs.detach().cpu().numpy()
+            targets = targets.detach().cpu().numpy().astype(np.int64)
+            outputs = outputs.detach().cpu().numpy().argmax(axis=1)
             _targets += list(targets)
             _outputs += list(outputs)
             loss.backward()
@@ -620,8 +620,8 @@ class GPUFitter:
                 batch_size = scan_maps.size(0)
                 losses.update(loss.detach().item(), batch_size)
                 
-                targets = targets.detach().cpu().numpy()
-                outputs = outputs.detach().cpu().numpy()
+                targets = targets.detach().cpu().numpy().astype(np.int64)
+                outputs = outputs.detach().cpu().numpy().argmax(axis=1)
                 _targets += list(targets)
                 _outputs += list(outputs)
                 if self.config.verbose:
@@ -680,10 +680,10 @@ for fold, (trn_, val_) in enumerate(kf.split(adversal_loading_df[adversal_loadin
     adversal_fnc_df.loc[val_, 'kfold'] = fold
 adversal_target_df = adversal_loading_df[["Id", "is_site2", "kfold"]]
 adversal_target_df.loc[:, 'path'] = -1
-id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==0, ["Id"]].values.astype(str)
-adversal_target_df.loc[adversal_target_df['is_site2']==0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
-id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==1, ["Id"]].values.astype(str)
-adversal_target_df.loc[adversal_target_df['is_site2']==1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 0, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 1, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 save_model_path = "adversal_resnet10.pth"
 log_path = "log_adversal_resnet10.csv"
@@ -700,7 +700,7 @@ def run(fold):
     adversal_train_fnc_df = adversal_fnc_df[adversal_fnc_df['kfold'] != fold].reset_index(drop=True)
     adversal_valid_fnc_df = adversal_fnc_df[adversal_fnc_df['kfold'] == fold].reset_index(drop=True)
     adversal_target_train_df = adversal_target_df[adversal_target_df['kfold'] != fold].reset_index(drop=True)
-    adversal_target_valid_df = adversal_target_df[adversal_target_df['kfold'] != fold].reset_index(drop=True)
+    adversal_target_valid_df = adversal_target_df[adversal_target_df['kfold'] == fold].reset_index(drop=True)
     
     train_dataset = MRIMapDataset(df=adversal_target_train_df, fnc=adversal_train_fnc_df, loading=adversal_train_loading_df, mode="train")
     valid_dataset = MRIMapDataset(df=adversal_target_valid_df, fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="train")
@@ -787,7 +787,7 @@ with torch.no_grad():
     for step, data in enumerate(tqdm(valid_data_loader)):
         scan_maps = data['scan_maps']
         fnc = data['fnc']
-        loading =data['loading']       
+        loading = data['loading']       
         scan_maps = scan_maps.to(device, dtype=torch.float)
         fnc = fnc.to(device, dtype=torch.float)
         loading = loading.to(device, dtype=torch.float)
