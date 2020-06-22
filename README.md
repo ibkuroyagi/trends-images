@@ -63,11 +63,12 @@ most of the results of these pitcures are made by neural network(3DCNN)
 
 ### ridge_results
 results of ridge regression
-#### mean of No
+* mean of No
 No0. use all feature(fnc, loading)  
 No1. fix std Forcibly  
 No2. decrease feature backward process  (0:1404, 0:1403,..., 0:1)  
 N03. decrease feature forkward process  (0:1, 0:2,..., 0:1404)  
+N0.4 loading ->ICA (n_component=26), fnc -> PCA (n_component=300)
 
 ### submission 
 submmison files

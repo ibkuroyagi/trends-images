@@ -8,12 +8,15 @@ from multiprocessing import Pool
 from tqdm import tqdm
 from time import time
 import tensorflow as tf
+from sklearn.decomposition import PCA
+from sklearn.decomposition import FastICA
 
 
 def metric(y_true, y_pred):
     return np.mean(np.sum(np.abs(y_true - y_pred), axis=0) / np.sum(y_true, axis=0))
 
 
+seed = 2020
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-tid", "--target_id", type=int, default=0,
@@ -52,20 +55,41 @@ labels_df["is_train"] = True
 df = df.merge(labels_df, on="Id", how="left")
 
 test_df = df[df["is_train"] != True].copy()
-df = df[df["is_train"] == True].copy()
+test_Id = test_df["Id"]
+is_train_idx = df["is_train"] == True
+df = df[is_train_idx].copy()
 FNC_SCALE = 1 / 600
 
 df[fnc_features] *= FNC_SCALE
 test_df[fnc_features] *= FNC_SCALE
+all_features = fnc_features + loading_features
+all_df = pd.concat([df.loc[:, fnc_features], test_df.loc[:, fnc_features]], axis=0)
+# pca, ica
+pca = PCA(n_components=300)
+pca_all = pca.fit_transform(all_df)
+scores = pca.explained_variance_ratio_
+print(f"pca_all.shape:{pca_all.shape}, PCA:ratio:{scores.cumsum()[-1]:.5f}")
+all_df = pd.concat([df.loc[:, loading_features], test_df.loc[:, loading_features]], axis=0)
+ica = FastICA(n_components=26, random_state=seed)#20個の基底（コンポネント）を作る
+ica_all = ica.fit_transform(all_df)
+print(f"ica_all.shape:{ica_all.shape}")
+# pca, icaを結合ラベル貼り
+fnc_pca_labels = [f"fnc_pca_{i}" for i in range(pca_all.shape[1])]
+loading_ica_labels = [f"loading_ica_{i}" for i in range(ica_all.shape[1])]
+tmp1 = pd.DataFrame(pca_all, columns=fnc_pca_labels)
+tmp2 = pd.DataFrame(ica_all, columns=loading_ica_labels)
+all_df = pd.concat([tmp2, tmp1], axis=1)
+df = all_df[:5877].join(labels_df)
+test_df = all_df[5877:]
+# test_df = test_Id.values
 
-
-df_model = df.copy()
-max_iter = 1403
 NUM_FOLDS = 5
 kf = KFold(n_splits=NUM_FOLDS, shuffle=True, random_state=2020)
 
-features = loading_features + fnc_features
+# features = loading_features + fnc_features
+features = loading_ica_labels + fnc_pca_labels
 max_features = len(features)
+max_iter = max_features - 1
 
 ridge_beta = pd.DataFrame(np.zeros((max_iter, max_features + 2)), columns=features + ["intercept_", "alpha"])
 alpha = 1e-6
@@ -160,7 +184,7 @@ valid_df['Id'] = df.Id.values
 valid_df[f"{target}_pred"] = y_oof[:, best_idx]
 valid_df.to_csv(f"ridge_results/val_{target}_No{feature_names}_CV.csv", index=False)
 pred_df = pd.DataFrame(np.zeros((test_df.shape[0], 2)), columns=["Id", f"{target}_pred"])
-pred_df['Id'] = test_df.Id.values
+pred_df['Id'] = test_Id.values
 pred_df[f"{target}_pred"] = y_preds[:, best_idx]
 pred_df.to_csv(f"ridge_results/pred_{target}_No{feature_names}_CV.csv", index=False)
 print('finish the program!')

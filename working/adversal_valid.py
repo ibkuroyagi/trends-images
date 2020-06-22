@@ -640,24 +640,72 @@ class GPUFitter:
             print(message)
 
 
+# train_df = pd.read_csv("../input/trends-assessment-prediction/train_scores.csv")
+# drop_cols = ["age", "domain1_var1", "domain1_var2", "domain2_var1", "domain2_var2"]
+# train_df.drop(drop_cols, axis=1, inplace=True)
+# train_df["is_train"] = True
+
+# fnc = pd.read_csv("../input/trends-assessment-prediction/fnc.csv")
+# fnc.fillna(fnc.mean(), inplace=True)
+# fnc = fnc.merge(train_df, on="Id", how="left")
+# test_fnc = fnc[fnc["is_train"] != True].copy()
+# fnc = fnc[fnc["is_train"] == True].copy()
+
+# loading = pd.read_csv("../input/trends-assessment-prediction/loading.csv")
+# loading.fillna(loading.mean(), inplace=True)
+# loading = loading.merge(train_df, on="Id", how="left")
+# test_loading = loading[loading["is_train"] != True].copy()
+# loading = loading[loading["is_train"] == True].copy()
+
+# # devide test data site2 and unknow
+# site2_id = pd.read_csv("../input/trends-assessment-prediction/reveal_ID_site2.csv")
+# site2_id['is_site2'] = 1
+# loading["is_site2"] = 0
+# fnc["is_site2"] = 0
+# test_loading = pd.merge(test_loading, site2_id, how="left")
+# test_loading.loc[test_loading["is_site2"] != 1, ["is_site2"]] = "unknow"
+# test_fnc = pd.merge(test_fnc, site2_id, how="left")
+# test_fnc.loc[test_fnc["is_site2"] != 1, ["is_site2"]] = "unknow"
+
+# adversal_loading_df = pd.concat([loading, test_loading[test_loading["is_site2"] == 1]], axis=0).reset_index(drop=True).drop("is_train", axis=1)
+# adversal_fnc_df = pd.concat([fnc, test_fnc[test_fnc["is_site2"] == 1]], axis=0).reset_index(drop=True).drop("is_train", axis=1)
+
+
+# adversal_loading_df['kfold'] = -1
+# adversal_fnc_df['kfold'] = -1
+
+# kf = StratifiedKFold(n_splits=config.num_folds, shuffle=True, random_state=config.seed)
+# for fold, (trn_, val_) in enumerate(kf.split(adversal_loading_df[adversal_loading_df.columns[1:-1]], adversal_loading_df["is_site2"].astype(int))):
+#     adversal_loading_df.loc[val_, 'kfold'] = fold
+#     adversal_fnc_df.loc[val_, 'kfold'] = fold
+# adversal_target_df = adversal_loading_df[["Id", "is_site2", "kfold"]]
+# adversal_target_df.loc[:, 'path'] = -1
+# id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 0, ["Id"]].values.astype(str)
+# adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+# id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 1, ["Id"]].values.astype(str)
+# adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
 train_df = pd.read_csv("../input/trends-assessment-prediction/train_scores.csv")
 drop_cols = ["age", "domain1_var1", "domain1_var2", "domain2_var1", "domain2_var2"]
 train_df.drop(drop_cols, axis=1, inplace=True)
 train_df["is_train"] = True
-
 fnc = pd.read_csv("../input/trends-assessment-prediction/fnc.csv")
 fnc.fillna(fnc.mean(), inplace=True)
 fnc = fnc.merge(train_df, on="Id", how="left")
-test_fnc = fnc[fnc["is_train"] != True].copy()
-fnc = fnc[fnc["is_train"] == True].copy()
+test_fnc = fnc[fnc["is_train"] != True].copy().reset_index(drop=True)
+fnc = fnc[fnc["is_train"] == True].copy().reset_index(drop=True)
 
 loading = pd.read_csv("../input/trends-assessment-prediction/loading.csv")
 loading.fillna(loading.mean(), inplace=True)
 loading = loading.merge(train_df, on="Id", how="left")
-test_loading = loading[loading["is_train"] != True].copy()
-loading = loading[loading["is_train"] == True].copy()
+test_loading = loading[loading["is_train"] != True].copy().reset_index(drop=True)
+loading = loading[loading["is_train"] == True].copy().reset_index(drop=True)
+kf = KFold(n_splits=config.num_folds, shuffle=True, random_state=config.seed)
+for fold, (trn_, val_) in enumerate(kf.split(train_df)):
+    loading.loc[val_, 'kfold'] = fold
+    fnc.loc[val_, 'kfold'] = fold
+loading = loading[loading["kfold"] == config.fold].reset_index(drop=True)
+fnc = fnc[fnc["kfold"] == config.fold].reset_index(drop=True)
 
-# devide test data site2 and unknow
 site2_id = pd.read_csv("../input/trends-assessment-prediction/reveal_ID_site2.csv")
 site2_id['is_site2'] = 1
 loading["is_site2"] = 0
@@ -666,11 +714,12 @@ test_loading = pd.merge(test_loading, site2_id, how="left")
 test_loading.loc[test_loading["is_site2"] != 1, ["is_site2"]] = "unknow"
 test_fnc = pd.merge(test_fnc, site2_id, how="left")
 test_fnc.loc[test_fnc["is_site2"] != 1, ["is_site2"]] = "unknow"
+# make test data for adversal validation
+test_loading_uk = test_loading[test_loading["is_site2"]=="unknow"]
+test_fnc_uk = test_fnc[test_fnc["is_site2"]=="unknow"]
 
 adversal_loading_df = pd.concat([loading, test_loading[test_loading["is_site2"] == 1]], axis=0).reset_index(drop=True).drop("is_train", axis=1)
 adversal_fnc_df = pd.concat([fnc, test_fnc[test_fnc["is_site2"] == 1]], axis=0).reset_index(drop=True).drop("is_train", axis=1)
-
-
 adversal_loading_df['kfold'] = -1
 adversal_fnc_df['kfold'] = -1
 
@@ -680,13 +729,15 @@ for fold, (trn_, val_) in enumerate(kf.split(adversal_loading_df[adversal_loadin
     adversal_fnc_df.loc[val_, 'kfold'] = fold
 adversal_target_df = adversal_loading_df[["Id", "is_site2", "kfold"]]
 adversal_target_df.loc[:, 'path'] = -1
-id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 0, ["Id"]].values.astype(str)
-adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
-id_names = adversal_target_df.loc[adversal_target_df.loc[:, "is_site2"] == 1, ["Id"]].values.astype(str)
-adversal_target_df.loc[adversal_target_df.loc[:, 'is_site2'] == 1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==0, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df['is_site2']==0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==1, ["Id"]].values.astype(str)
+adversal_target_df.loc[adversal_target_df['is_site2']==1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
+adversal_target_df.nunique()
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-save_model_path = "adversal_resnet10.pth"
-log_path = "log_adversal_resnet10.csv"
+save_model_path = "models/adversal_resnet10.pth"
+log_path = "logs/log_adversal_resnet10.csv"
 print(device)
 print(save_model_path)
 print(log_path)
@@ -702,8 +753,10 @@ def run(fold):
     adversal_target_train_df = adversal_target_df[adversal_target_df['kfold'] != fold].reset_index(drop=True)
     adversal_target_valid_df = adversal_target_df[adversal_target_df['kfold'] == fold].reset_index(drop=True)
     
-    train_dataset = MRIMapDataset(df=adversal_target_train_df, fnc=adversal_train_fnc_df, loading=adversal_train_loading_df, mode="train")
-    valid_dataset = MRIMapDataset(df=adversal_target_valid_df, fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="train")
+    train_dataset = MRIMapDataset(df=adversal_target_train_df, fnc=adversal_train_fnc_df, loading=adversal_train_loading_df,
+                                  fMRI_path=adversal_target_train_df['path'], mode="train")
+    valid_dataset = MRIMapDataset(df=adversal_target_valid_df, fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df,
+                                  fMRI_path=adversal_target_valid_df['path'], mode="train")
     
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -730,7 +783,7 @@ fitter = run(config.fold)
 
 #
 log_df = pd.read_csv(fitter.log_path)
-ptcture_path = log_path[:-4] +f"_fold{config.fold}_No{file_No}.png"
+ptcture_path = log_path[:-4] + f"_fold{config.fold}_No{file_No}.png"
 plt.figure(figsize=(15,5))
 plt.title("loss")
 plt.subplot(1,2,1)
@@ -743,20 +796,19 @@ log_df.val_score.plot()
 plt.savefig(f"adversal/{ptcture_path}")
 
 
-adversal_valid_fnc_df = adversal_fnc_df[adversal_fnc_df['kfold'] == config.fold].reset_index(drop=True)
-adversal_valid_loading_df = adversal_target_df[adversal_loading_df['kfold'] == config.fold].reset_index(drop=True)
+# adversal_valid_fnc_df = adversal_fnc_df[adversal_fnc_df['kfold'] == config.fold].reset_index(drop=True)
+# adversal_valid_loading_df = adversal_target_df[adversal_loading_df['kfold'] == config.fold].reset_index(drop=True)
 
-valid_dataset = MRIMapDataset(fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="test")
-valid_data_loader = torch.utils.data.DataLoader(
-    valid_dataset,
-    batch_size=config.batch_size,
-    num_workers=config.num_workers,
-    shuffle=False)
-_test_loading = test_loading.loc[test_loading["is_site2"] != 1]
-_test_fnc = test_fnc.loc[test_fnc["is_site2"] != 1]
-test_dataset = MRIMapDataset(fnc=_test_fnc, loading=_test_loading, mode="test")
-test_dataloader = torch.utils.data.DataLoader(
-                                              test_dataset,
+# valid_dataset = MRIMapDataset(fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="test")
+# valid_data_loader = torch.utils.data.DataLoader(
+#     valid_dataset,
+#     batch_size=config.batch_size,
+#     num_workers=config.num_workers,
+#     shuffle=False)
+# _test_loading = test_loading.loc[test_loading["is_site2"] != 1]
+# _test_fnc = test_fnc.loc[test_fnc["is_site2"] != 1]
+test_dataset = MRIMapDataset(fnc=test_fnc_uk, loading=test_loading_uk, mode="test", path=test_loading_uk[["Id"]])
+test_dataloader = torch.utils.data.DataLoader(test_dataset,
                                               batch_size=config.batch_size,
                                               num_workers=config.num_workers,
                                               shuffle=False)
@@ -766,12 +818,12 @@ model.to(device)
 model.eval()
 
 test_preds = np.empty((0, 2))
-valid_preds = np.empty((0, 2))
+# valid_preds = np.empty((0, 2))
 with torch.no_grad():
     for step, data in enumerate(tqdm(test_dataloader)):
         scan_maps = data['scan_maps']
         fnc = data['fnc']
-        loading =data['loading']       
+        loading = data['loading']       
         scan_maps = scan_maps.to(device, dtype=torch.float)
         fnc = fnc.to(device, dtype=torch.float)
         loading = loading.to(device, dtype=torch.float)
@@ -784,23 +836,23 @@ with torch.no_grad():
         gc.collect()
     test_df = pd.DataFrame(test_preds, columns=["site1", "site2"])
     test_df.to_csv(f"adversal/test_fold{config.fold}_No{file_No}.csv", index=False)
-    for step, data in enumerate(tqdm(valid_data_loader)):
-        scan_maps = data['scan_maps']
-        fnc = data['fnc']
-        loading = data['loading']       
-        scan_maps = scan_maps.to(device, dtype=torch.float)
-        fnc = fnc.to(device, dtype=torch.float)
-        loading = loading.to(device, dtype=torch.float)
+    # for step, data in enumerate(tqdm(valid_data_loader)):
+    #     scan_maps = data['scan_maps']
+    #     fnc = data['fnc']
+    #     loading = data['loading']       
+    #     scan_maps = scan_maps.to(device, dtype=torch.float)
+    #     fnc = fnc.to(device, dtype=torch.float)
+    #     loading = loading.to(device, dtype=torch.float)
         
-        outputs = model(scan_maps, fnc, loading)
-        batch_size = scan_maps.size(0)
-        outputs = outputs.detach().cpu().numpy()
-        valid_preds = np.concatenate([valid_preds, outputs], 0)
-        torch.cuda.empty_cache()
-        gc.collect()
-    valid_df = pd.DataFrame(valid_preds, columns=["site1", "site2"])
-    valid_df.to_csv(f"adversal/valid_fold{config.fold}_No{file_No}.csv", index=False)
+    #     outputs = model(scan_maps, fnc, loading)
+    #     batch_size = scan_maps.size(0)
+    #     outputs = outputs.detach().cpu().numpy()
+    #     valid_preds = np.concatenate([valid_preds, outputs], 0)
+    #     torch.cuda.empty_cache()
+    #     gc.collect()
+    # valid_df = pd.DataFrame(valid_preds, columns=["site1", "site2"])
+    # valid_df.to_csv(f"adversal/valid_fold{config.fold}_No{file_No}.csv", index=False)
 
 print(outputs.shape)
 print(test_preds)
-print(valid_preds.shape)
+# print(valid_preds.shape)
