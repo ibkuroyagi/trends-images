@@ -70,16 +70,16 @@ No2. decrease feature backward process  (0:1404, 0:1403,..., 0:1)
 N03. decrease feature forkward process  (0:1, 0:2,..., 0:1404)  
 N04. loading ->ICA (n_component=26), fnc -> PCA (n_component=300) decrease feature backward process  (0:1404, 0:1403,..., 0:1)  
 ```
-No.2
-raw
-age:0.04293
-domain1_var1:0.02641
-domain1_var2:0.02642
-domain2_var1:0.03177
-domain2_var2:0.03082
-CV score:0.15833
+No.2  
+raw  
+age:0.04293  
+domain1_var1:0.02641  
+domain1_var2:0.02642  
+domain2_var1:0.03177  
+domain2_var2:0.03082  
+CV score:0.15833  
 
-No.4
+No.4  
 loading -> ica, fnc -> pca
 age:0.04336
 domain1_var1:0.02642
