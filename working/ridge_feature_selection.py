@@ -70,7 +70,7 @@ pca_all = pca.fit_transform(all_df)
 scores = pca.explained_variance_ratio_
 print(f"pca_all.shape:{pca_all.shape}, PCA:ratio:{scores.cumsum()[-1]:.5f}")
 all_df = pd.concat([df.loc[:, loading_features], test_df.loc[:, loading_features]], axis=0)
-ica = FastICA(n_components=26, random_state=seed)#20個の基底（コンポネント）を作る
+ica = FastICA(n_components=26, random_state=seed)  # 26個の基底（コンポネント）を作る
 ica_all = ica.fit_transform(all_df)
 print(f"ica_all.shape:{ica_all.shape}")
 # pca, icaを結合ラベル貼り

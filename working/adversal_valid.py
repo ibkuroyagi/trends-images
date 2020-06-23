@@ -421,17 +421,17 @@ class TReNDSModel(nn.Module):
         x = self.l1(x)
         x = self.p1(x)
         out = self.l2(x)
-        out = self.sigmoid(out)
+        # out = self.sigmoid(out)
         return out
 
 
 class MRIMapDataset(Dataset):
-    def __init__(self, df=None, fnc=None, loading=None, mode="train"):
+    def __init__(self, df=None, fnc=None, loading=None, mode="train", fMRI_path=None):
         super(Dataset, self).__init__()
         self.mode = mode
         self.fnc = fnc.iloc[:, 1:-2].values
         self.loading = loading.iloc[:, 1:-2].values
-        self.fMRI_path = df["path"].values
+        self.fMRI_path = fMRI_path.values
         if mode == "train":
             self.labels = df["is_site2"].values
 
@@ -527,7 +527,8 @@ class GPUFitter:
         self.samples_per_cls = [1176 * 4, 102 * 4]
         self.samples_per_cls_valid = [1176 * 4, 102 * 1]
         self.loss_type = "focal"
-        self.criterion = CB_loss  # TReNDSLoss(self.device)
+        # self.criterion = CB_loss  # TReNDSLoss(self.device)
+        self.criterion = nn.CrossEntropyLoss()
         self.log(f'Fitter prepared for fold {self.fold}. Device is {self.device}')
         self.columns = ["loss", "score", "val_loss", "val_score", "lr"]
         self.log_df = pd.DataFrame(columns=self.columns)
@@ -574,7 +575,8 @@ class GPUFitter:
             self.optimizer.zero_grad()
             
             outputs = self.model(scan_maps, fnc, loading)
-            loss = self.criterion(targets, outputs, self.samples_per_cls, self.no_of_classes, self.loss_type, self.beta, self.gamma)
+            # loss = self.criterion(targets, outputs, self.samples_per_cls, self.no_of_classes, self.loss_type, self.beta, self.gamma)
+            loss = self.criterion(outputs, targets)
             
             batch_size = scan_maps.size(0)
             losses.update(loss.detach().item(), batch_size)
@@ -616,7 +618,8 @@ class GPUFitter:
                 targets = targets.to(self.device, dtype=torch.int64)
                 outputs = self.model(scan_maps, fnc, loading)
 
-                loss = self.criterion(targets, outputs, self.samples_per_cls_valid, self.no_of_classes, self.loss_type, self.beta, self.gamma)
+                # loss = self.criterion(targets, outputs, self.samples_per_cls_valid, self.no_of_classes, self.loss_type, self.beta, self.gamma)
+                loss = self.criterion(outputs, targets)
                 batch_size = scan_maps.size(0)
                 losses.update(loss.detach().item(), batch_size)
                 
@@ -733,11 +736,11 @@ id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==0, ["Id"]].val
 adversal_target_df.loc[adversal_target_df['is_site2']==0, ['path']] = [f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
 id_names = adversal_target_df.loc[adversal_target_df["is_site2"]==1, ["Id"]].values.astype(str)
 adversal_target_df.loc[adversal_target_df['is_site2']==1, ['path']] = [f"{config.root_test_path}/{id_name}.mat" for id_name in list(id_names.squeeze())]
-adversal_target_df.nunique()
+print(adversal_target_df.nunique())
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-save_model_path = "models/adversal_resnet10.pth"
-log_path = "logs/log_adversal_resnet10.csv"
+save_model_path = "adversal_resnet10.pth"
+log_path = "log_adversal_resnet10.csv"
 print(device)
 print(save_model_path)
 print(log_path)
@@ -799,7 +802,7 @@ plt.savefig(f"adversal/{ptcture_path}")
 # adversal_valid_fnc_df = adversal_fnc_df[adversal_fnc_df['kfold'] == config.fold].reset_index(drop=True)
 # adversal_valid_loading_df = adversal_target_df[adversal_loading_df['kfold'] == config.fold].reset_index(drop=True)
 
-# valid_dataset = MRIMapDataset(fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="test")
+# valid_dataset = MRIMapDataset(fnc=adversal_valid_fnc_df, loading=adversal_valid_loading_df, mode="test", fMRI_path=test_loading_uk[["Id"]])
 # valid_data_loader = torch.utils.data.DataLoader(
 #     valid_dataset,
 #     batch_size=config.batch_size,
@@ -807,7 +810,11 @@ plt.savefig(f"adversal/{ptcture_path}")
 #     shuffle=False)
 # _test_loading = test_loading.loc[test_loading["is_site2"] != 1]
 # _test_fnc = test_fnc.loc[test_fnc["is_site2"] != 1]
-test_dataset = MRIMapDataset(fnc=test_fnc_uk, loading=test_loading_uk, mode="test", path=test_loading_uk[["Id"]])
+
+id_names = test_loading_uk["Id"].values.astype(str)
+test_path_df = pd.DataFrame([f"{config.root_train_path}/{id_name}.mat" for id_name in list(id_names.squeeze())], columns=["path"])
+
+test_dataset = MRIMapDataset(fnc=test_fnc_uk, loading=test_loading_uk, mode="test", fMRI_path=test_path_df)
 test_dataloader = torch.utils.data.DataLoader(test_dataset,
                                               batch_size=config.batch_size,
                                               num_workers=config.num_workers,
@@ -829,6 +836,7 @@ with torch.no_grad():
         loading = loading.to(device, dtype=torch.float)
         
         outputs = model(scan_maps, fnc, loading)
+        outputs = F.softmax(outputs, dim=1)
         batch_size = scan_maps.size(0)
         outputs = outputs.detach().cpu().numpy()
         test_preds = np.concatenate([test_preds, outputs], 0)
