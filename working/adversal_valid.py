@@ -583,6 +583,7 @@ class GPUFitter:
             
             targets = targets.detach().cpu().numpy().astype(np.int64)
             outputs = outputs.detach().cpu().numpy().argmax(axis=1)
+            score = f1_score(targets, outputs)
             _targets += list(targets)
             _outputs += list(outputs)
             loss.backward()
@@ -593,9 +594,10 @@ class GPUFitter:
                         f'Train Step {step}, ' + \
                         f'fold {self.fold}, ' + \
                         f'loss: {losses.avg:.5f}, ' + \
+                        f'score: {score:.5f}' + \
                         f'time: {(time.time() - t):.5f}'
                     )
-        scores = f1_score(_targets, _outputs) 
+        scores = f1_score(_targets, _outputs)
         return losses, scores
 
     def validation_one_epoch(self, validation_loader):
@@ -625,6 +627,7 @@ class GPUFitter:
                 
                 targets = targets.detach().cpu().numpy().astype(np.int64)
                 outputs = outputs.detach().cpu().numpy().argmax(axis=1)
+                score = f1_score(targets, outputs)
                 _targets += list(targets)
                 _outputs += list(outputs)
                 if self.config.verbose:
@@ -633,6 +636,7 @@ class GPUFitter:
                         f'Validation Step {step}, ' + \
                         f'fold {self.fold}, ' + \
                         f'loss: {losses.avg:.5f}, ' + \
+                        f'score: {score:.5f}' + \
                         f'time: {(time.time() - t):.5f}'
                         )
         scores = f1_score(_targets, _outputs)
